@@ -8,13 +8,13 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 # Connect to ChromaDB
 client = chromadb.PersistentClient(path="./chroma_db")
 
-# Get existing collection
+# Get page-aware collection
 collection = client.get_collection(
-    name="pdf_documents"
+    name="pdf_documents_v2"
 )
 
 # User question
-question = "What are the advantages of sole proprietorship?"
+question = input("\nAsk your PDF a question: ")
 
 # Convert question into embedding
 question_embedding = model.encode(question).tolist()
@@ -27,6 +27,11 @@ results = collection.query(
 
 print("\nRelevant PDF Information:\n")
 
-for document in results["documents"][0]:
+for document, metadata in zip(
+    results["documents"][0],
+    results["metadatas"][0]
+):
     print("--------------------------------")
-    print(document)
+    print("Source:", metadata["source"])
+    print("Page:", metadata["page_number"])
+    print("Content:", document)

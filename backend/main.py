@@ -7,7 +7,7 @@ from io import BytesIO
 from vector_store import store_chunks
 
 
-def chunk_text(text, chunk_size=500, overlap=100):
+def chunk_text(text, page_number, chunk_size=500, overlap=100):
     chunks = []
 
     start = 0
@@ -18,7 +18,10 @@ def chunk_text(text, chunk_size=500, overlap=100):
         chunk = text[start:end].strip()
 
         if chunk:
-            chunks.append(chunk)
+            chunks.append({
+                "text": chunk,
+                "page_number": page_number
+            })
 
         start += chunk_size - overlap
 
@@ -27,8 +30,8 @@ def chunk_text(text, chunk_size=500, overlap=100):
 
 app = FastAPI(
     title="Personal PDF AI Assistant",
-    description="Upload PDF and extract text from it",
-    version="1.0.0"
+    description="Upload PDF and ask questions with source citations",
+    version="1.1.0"
 )
 
 
@@ -53,33 +56,50 @@ async def upload_pdf(file: UploadFile = File(...)):
 
         pdf = PdfReader(BytesIO(contents))
 
-        extracted_text = ""
+        all_chunks = []
+        total_characters = 0
 
-        for page in pdf.pages:
-            extracted_text += page.extract_text() or ""
+        # Extract text page by page
+        for page_number, page in enumerate(pdf.pages, start=1):
 
-        # Text Chunking
-        chunks = chunk_text(
-            extracted_text,
-            chunk_size=500,
-            overlap=100
-        )
+            page_text = page.extract_text() or ""
 
-        # Store chunks in ChromaDB
+            total_characters += len(page_text)
+
+            # Create chunks with page numbers
+            page_chunks = chunk_text(
+                page_text,
+                page_number=page_number,
+                chunk_size=500,
+                overlap=100
+            )
+
+            all_chunks.extend(page_chunks)
+
+        if not all_chunks:
+            raise HTTPException(
+                status_code=400,
+                detail="No extractable text found in this PDF"
+            )
+
+        # Store chunks with metadata
         stored_chunks = store_chunks(
-            chunks,
+            all_chunks,
             file.filename
         )
 
         return {
             "filename": file.filename,
             "total_pages": len(pdf.pages),
-            "total_characters": len(extracted_text),
-            "total_chunks": len(chunks),
+            "total_characters": total_characters,
+            "total_chunks": len(all_chunks),
             "stored_chunks": stored_chunks,
             "message": "PDF uploaded and stored successfully!",
-            "chunks": chunks
+            "chunks": all_chunks
         }
+
+    except HTTPException:
+        raise
 
     except Exception as e:
         raise HTTPException(

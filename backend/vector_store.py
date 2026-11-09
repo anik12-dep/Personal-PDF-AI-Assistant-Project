@@ -9,32 +9,44 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 # Connect to persistent ChromaDB
 client = chromadb.PersistentClient(path="./chroma_db")
 
-# Create or get collection
+# Create a new collection for page-aware documents
 collection = client.get_or_create_collection(
-    name="pdf_documents"
+    name="pdf_documents_v2"
 )
 
 
 def store_chunks(chunks, filename):
-    # Convert text chunks into embeddings
-    embeddings = model.encode(chunks)
+
+    # Extract text from chunks
+    documents = [chunk["text"] for chunk in chunks]
+
+    # Generate embeddings
+    embeddings = model.encode(documents)
 
     # Generate unique IDs
     ids = [str(uuid.uuid4()) for _ in chunks]
 
+    # Store metadata with page numbers
+    metadatas = [
+        {
+            "source": filename,
+            "page_number": chunk["page_number"]
+        }
+        for chunk in chunks
+    ]
+
     # Store everything in ChromaDB
-    collection.add(
-        ids=ids,
-        documents=chunks,
-        embeddings=embeddings.tolist(),
-        metadatas=[
-            {"source": filename} for _ in chunks
-        ]
-    )
+    if documents:
+        collection.add(
+            ids=ids,
+            documents=documents,
+            embeddings=embeddings.tolist(),
+            metadatas=metadatas
+        )
 
-    print(f"Successfully stored {len(chunks)} chunks!")
+    print(f"Successfully stored {len(documents)} chunks!")
 
-    return len(chunks)
+    return len(documents)
 
 
-print("Vector Store initialized successfully!")
+print("Page-aware Vector Store initialized successfully!")

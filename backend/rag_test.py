@@ -10,7 +10,7 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 client = chromadb.PersistentClient(path="./chroma_db")
 
 collection = client.get_collection(
-    name="pdf_documents"
+    name="pdf_documents_v2"
 )
 
 # 3. User Question
@@ -25,8 +25,11 @@ results = collection.query(
     n_results=5
 )
 
+documents = results["documents"][0]
+metadatas = results["metadatas"][0]
+
 # 6. Prepare Context
-context = "\n\n".join(results["documents"][0])
+context = "\n\n".join(documents)
 
 # 7. Send Context to Llama
 response = ollama.chat(
@@ -44,14 +47,14 @@ response = ollama.chat(
         {
             "role": "user",
             "content": f"""
-            Context from PDF:
-            {context}
+Context from PDF:
+{context}
 
-            Question:
-            {question}
+Question:
+{question}
 
-            Give a clear and simple answer.
-            """
+Give a clear and simple answer.
+"""
         }
     ]
 )
@@ -59,3 +62,20 @@ response = ollama.chat(
 # 8. Display Final Answer
 print("\n========== AI ANSWER ==========\n")
 print(response["message"]["content"])
+
+# 9. Display Source Citation
+print("\n========== SOURCE CITATION ==========\n")
+
+if documents:
+    unique_sources = set()
+
+    for metadata in metadatas:
+        source = metadata["source"]
+        page = metadata["page_number"]
+
+        unique_sources.add((source, page))
+
+    for source, page in sorted(unique_sources):
+        print(f"PDF: {source} | Page: {page}")
+else:
+    print("No source information found.")
