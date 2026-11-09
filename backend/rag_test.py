@@ -13,69 +13,107 @@ collection = client.get_collection(
     name="pdf_documents_v2"
 )
 
-# 3. User Question
-question = input("\nAsk your PDF a question: ")
+# 3. Conversation Memory
+chat_history = []
 
-# 4. Convert Question into Embedding
-question_embedding = model.encode(question).tolist()
+print("\n===== Personal PDF AI Assistant =====")
+print("Ask questions about your PDF.")
+print("Type 'exit' to stop the conversation.\n")
 
-# 5. Retrieve Relevant Chunks
-results = collection.query(
-    query_embeddings=[question_embedding],
-    n_results=5
-)
+# 4. Start Conversation Loop
+while True:
 
-documents = results["documents"][0]
-metadatas = results["metadatas"][0]
+    question = input("\nYou: ").strip()
 
-# 6. Prepare Context
-context = "\n\n".join(documents)
+    if question.lower() in ["exit", "quit", "bye"]:
+        print("\nAI: Goodbye! See you again.")
+        break
 
-# 7. Send Context to Llama
-response = ollama.chat(
-    model="llama3.2",
-    messages=[
+    if not question:
+        continue
+
+    # 5. Convert Question into Embedding
+    question_embedding = model.encode(question).tolist()
+
+    # 6. Retrieve Relevant Chunks
+    results = collection.query(
+        query_embeddings=[question_embedding],
+        n_results=5
+    )
+
+    documents = results["documents"][0]
+    metadatas = results["metadatas"][0]
+
+    # 7. Prepare Context
+    context = "\n\n".join(documents)
+
+    # 8. Prepare Current User Message
+    user_message = f"""
+    Context from PDF:
+    {context}
+
+    Question:
+    {question}
+
+    Answer using only the provided PDF context.
+    """
+
+    # 9. Prepare Messages with Conversation Memory
+    messages = [
         {
             "role": "system",
             "content": (
                 "You are a helpful PDF assistant. "
-                "Answer questions using only the provided context. "
+                "Answer questions using only the provided PDF context. "
+                "Use previous conversation to understand follow-up questions. "
                 "If the answer is not available in the context, "
                 "say that the PDF does not contain the answer."
             )
-        },
-        {
-            "role": "user",
-            "content": f"""
-Context from PDF:
-{context}
-
-Question:
-{question}
-
-Give a clear and simple answer.
-"""
         }
     ]
-)
 
-# 8. Display Final Answer
-print("\n========== AI ANSWER ==========\n")
-print(response["message"]["content"])
+    messages.extend(chat_history)
 
-# 9. Display Source Citation
-print("\n========== SOURCE CITATION ==========\n")
+    messages.append({
+        "role": "user",
+        "content": user_message
+    })
 
-if documents:
+    # 10. Send Messages to Llama
+    response = ollama.chat(
+        model="llama3.2",
+        messages=messages
+    )
+
+    answer = response["message"]["content"]
+
+    # 11. Display Answer
+    print("\n========== AI ANSWER ==========\n")
+    print(answer)
+
+    # 12. Display Source Citation
+    print("\n========== SOURCE CITATION ==========\n")
+
     unique_sources = set()
 
     for metadata in metadatas:
-        source = metadata["source"]
-        page = metadata["page_number"]
-
-        unique_sources.add((source, page))
+        unique_sources.add((
+            metadata["source"],
+            metadata["page_number"]
+        ))
 
     for source, page in sorted(unique_sources):
         print(f"PDF: {source} | Page: {page}")
-else:
-    print("No source information found.")
+
+    # 13. Save Conversation History
+    chat_history.append({
+        "role": "user",
+        "content": user_message
+    })
+
+    chat_history.append({
+        "role": "assistant",
+        "content": answer
+    })
+
+    print("\n[Conversation memory updated]")
