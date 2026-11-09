@@ -1,7 +1,10 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: "https://shelving-washtub-buzz.ngrok-free.dev",
+  headers: {
+    "ngrok-skip-browser-warning": "true",
+  },
 });
 
 // Create New Conversation
@@ -40,3 +43,5 @@ export const sendMessage = async (conversationId, question) => {
 
   return response.data;
 };
+
+export default API;
